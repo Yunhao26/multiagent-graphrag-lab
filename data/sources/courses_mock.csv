@@ -1,0 +1,11 @@
+course_code,course_name,program,year,prerequisite
+AI101,Introduction to Artificial Intelligence,AI Track,2024,
+DS102,Data Science Basics,AI Track,2024,
+ML201,Machine Learning Foundations,AI Track,2024,AI101
+DL301,Deep Learning,AI Track,2024,ML201
+NLP310,Natural Language Processing,AI Track,2025,DL301
+CV311,Computer Vision,AI Track,2025,DL301
+MLOps320,ML Systems and MLOps,AI Track,2025,ML201
+CAP400,Capstone Project,AI Track,2025,"DL301;MLOps320"
+
+
