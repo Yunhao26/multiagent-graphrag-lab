@@ -1,1 +1,0 @@
-# multiagent-graphrag-lab
