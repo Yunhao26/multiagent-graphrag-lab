@@ -5,6 +5,9 @@ This repository is a **minimal, offline-friendly GraphRAG skeleton**. It is desi
 - **Build/Serve separation**
   - **Build**: `ingestion/build_index.py` generates **chunks + Chroma vector index + `graph.json.gz`**
   - **Serve**: FastAPI exposes `/health` and `/qa`; Streamlit UI calls the FastAPI backend
+- **Supported source formats**
+  - Structured: **CSV** (course rows)
+  - Unstructured: **Markdown** and **PDF (text-only)**. PDF pages are extracted via `pypdf` (no OCR).
 - **Offline by default**
   - No `OPENAI_API_KEY` is required to **build the index** or to **answer questions**
   - If OpenAI is configured, answers can be generated with `ChatOpenAI` for improved fluency
@@ -49,10 +52,10 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-Optionally copy `.env.example` to `.env` and adjust paths:
+Optionally copy `env.example` to `.env` and adjust paths:
 
 ```bash
-cp .env.example .env
+cp env.example .env
 ```
 
 ## Build the index (chunks + Chroma + graph)
@@ -60,6 +63,11 @@ cp .env.example .env
 ```bash
 python -m ingestion.build_index --data_dir data/sources --out_dir data/index
 ```
+
+Supported inputs under `data/sources`:
+- `*.md` (Markdown)
+- `*.csv` (course rows)
+- `*.pdf` (PDF, text-only extraction via `pypdf`)
 
 Outputs (by default):
 
@@ -104,8 +112,14 @@ curl -X POST "http://localhost:8000/qa" -H "Content-Type: application/json" -d "
   - Set `OPENAI_API_KEY` (and keep `LLM_PROVIDER=openai`) to enable `ChatOpenAI` answer generation
   - Answers are still grounded in evidence chunks and include chunk-id citations
 
-- **Optional Graph Transformer (future)**
-  - `LLMGraphTransformer` can be used to extract a richer graph from unstructured text when an online LLM is available
+- **Ollama Local Mode (optional)**
+  - Set `LLM_PROVIDER=ollama` and `OLLAMA_MODEL=<local_ollama_model>` (e.g., `mistral:7b`) to generate answers with a local Ollama model
+  - Requires a running Ollama server (default: `http://localhost:11434`)
+  - If Ollama is unavailable, the system falls back to the deterministic offline summarizer
+
+- **Optional Graph Transformer (Ollama, optional)**
+  - Set `GRAPH_LLM_PROVIDER=ollama` and `GRAPH_LLM_MODEL=<local_ollama_model>` to enable `LLMGraphTransformer` during ingestion
+  - This implementation is conservative: it only adds prerequisite edges between course codes and attaches chunk-id evidence
   - The rule-based graph builder remains the offline safety net
 
 ## Offline fallback vs OpenAI enhancement
@@ -121,7 +135,7 @@ curl -X POST "http://localhost:8000/qa" -H "Content-Type: application/json" -d "
 
 - **With OpenAI (optional)**
   - Set `OPENAI_API_KEY` (and keep `LLM_PROVIDER=openai`) to enable `ChatOpenAI` for more natural answers.
-  - Optional future enhancement: `LLMGraphTransformer` can be used to extract a richer graph from text. The current code keeps a rule-based graph builder as the offline safety net.
+  - Optional: `LLMGraphTransformer` can be enabled during ingestion via local Ollama to extract additional prerequisite edges from text. The rule-based graph builder remains the offline safety net.
 
 ## Evaluation
 
@@ -159,5 +173,29 @@ After building the index, open and run `notebooks/evaluation.ipynb`. It compares
   - Upgrade pip: `python -m pip install --upgrade pip`
   - Recreate the venv if needed.
   - If `sentence-transformers` cannot download models, either pre-download models or set `FORCE_HASH_EMBEDDINGS=1`.
+
+- **Embedding configuration**
+  - `EMBEDDING_MODEL`: HuggingFace model name (default: `sentence-transformers/all-MiniLM-L6-v2`)
+  - `EMBEDDING_DEVICE`: `auto` (default), `cpu`, `cuda`, `cuda:0`, ...
+  - `EMBEDDING_BATCH_SIZE`: encoder batch size (default: `64`)
+  - `FORCE_HASH_EMBEDDINGS=1`: force the deterministic offline fallback
+  - `HASH_EMBEDDING_DIM`: hash embedding dimension (default: `384`)
+
+- **Graph extraction (LLMGraphTransformer + Ollama)**
+  - Disabled by default. Enable it during ingestion by setting:
+    - `GRAPH_LLM_PROVIDER=ollama`
+    - `GRAPH_LLM_MODEL=<local_ollama_model>` (e.g., `mistral:7b`)
+    - `OLLAMA_BASE_URL` (default: `http://localhost:11434`)
+  - Optional knobs:
+    - `GRAPH_LLM_MAX_DOCS` (default: `25`, set `0` to process all chunks)
+    - `GRAPH_LLM_TEMPERATURE` / `GRAPH_LLM_NUM_PREDICT` / `GRAPH_LLM_TIMEOUT_S`
+
+- **Chroma dimension mismatch**
+  - If you see: `Collection expecting embedding with dimension of X, got Y`
+    - Delete your persisted `CHROMA_DIR` (e.g., `data/index/chroma/`) and rebuild the index, or
+    - Keep embedding settings consistent across build and serve (`EMBEDDING_MODEL` / `FORCE_HASH_EMBEDDINGS` / `HASH_EMBEDDING_DIM`).
+
+- **GPU embeddings**
+  - To use an NVIDIA GPU for embeddings, install a CUDA-enabled PyTorch build. A CPU-only PyTorch install will run embeddings on CPU even if a GPU is present.
 
 

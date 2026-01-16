@@ -3,6 +3,7 @@ uvicorn
 streamlit
 networkx
 chromadb
+pypdf
 sentence-transformers
 pandas
 pyarrow
@@ -18,5 +19,7 @@ langchain-text-splitters
 langchain-huggingface
 langchain-openai
 langchain-experimental
+json-repair
+langchain-ollama
 
 

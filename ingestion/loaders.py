@@ -7,6 +7,8 @@ Requirements for this MVP:
   ``doc_id`` and ``title``. A lightweight heading tracker populates ``section``.
 - CSV: one Document per row with metadata including ``source``, ``row``,
   ``course_code``, ``year``, ``program`` and ``prerequisite``.
+- PDF: one Document per page (text-only) with metadata including ``source``,
+  ``page``/``page_or_row``, ``doc_id`` and a simple ``section`` label.
 """
 
 from __future__ import annotations
@@ -27,10 +29,10 @@ _HEADING_RE = re.compile(r"^(?P<hashes>#{1,6})\s+(?P<title>.+?)\s*$")
 
 
 def scan_source_files(data_dir: Path) -> List[Path]:
-    """Scan a directory for supported source files (Markdown/CSV)."""
+    """Scan a directory for supported source files (Markdown/CSV/PDF)."""
 
     files: List[Path] = []
-    for pattern in ("*.md", "*.csv"):
+    for pattern in ("*.md", "*.csv", "*.pdf"):
         files.extend(data_dir.rglob(pattern))
     return sorted([p for p in files if p.is_file()])
 
@@ -173,6 +175,49 @@ def load_courses_csv(path: Path, *, data_dir: Path) -> List[Document]:
     return docs
 
 
+def load_pdf_file(path: Path, *, data_dir: Path) -> List[Document]:
+    """Load a PDF file into one Document per page (text-only)."""
+
+    try:
+        from pypdf import PdfReader
+    except Exception as exc:  # pragma: no cover
+        raise RuntimeError(
+            "PDF support requires 'pypdf'. Install it with `pip install pypdf`."
+        ) from exc
+
+    source = _rel_source(path, data_dir)
+    title = path.stem
+
+    reader = PdfReader(str(path))
+    docs: List[Document] = []
+    for page_i, page in enumerate(reader.pages, start=1):
+        try:
+            text = page.extract_text() or ""
+        except Exception:
+            text = ""
+        text = str(text).strip()
+        if not text:
+            continue
+
+        doc_id = _doc_id("pdf", source, suffix=f"::p{page_i}")
+        docs.append(
+            Document(
+                page_content=text,
+                metadata={
+                    "type": "pdf_page",
+                    "source": source,
+                    "doc_id": doc_id,
+                    "title": title,
+                    "page": page_i,
+                    "page_or_row": page_i,
+                    "section": f"Page {page_i}",
+                },
+            )
+        )
+
+    return docs
+
+
 def load_sources(data_dir: Path, *, selected_sources: Iterable[Path] | None = None) -> List[Document]:
     """Load all supported source files from a directory."""
 
@@ -185,6 +230,8 @@ def load_sources(data_dir: Path, *, selected_sources: Iterable[Path] | None = No
             docs.extend(load_markdown_file(p, data_dir=data_dir))
         elif p.suffix.lower() == ".csv":
             docs.extend(load_courses_csv(p, data_dir=data_dir))
+        elif p.suffix.lower() == ".pdf":
+            docs.extend(load_pdf_file(p, data_dir=data_dir))
 
     return docs
 
